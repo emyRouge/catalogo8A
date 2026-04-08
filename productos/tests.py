@@ -1,7 +1,8 @@
 from django.test import TestCase
-from django.urls import reverse
+from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 from .models import Productos
 
 REDUCE_STOCK_URL = "/api/products/reduce-stock/"
@@ -11,6 +12,16 @@ class ReduceStockTests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username="tester",
+            password="Test12345",
+            email="tester@example.com",
+        )
+        refresh = RefreshToken.for_user(self.user)
+        self.auth_headers = {
+            "HTTP_AUTHORIZATION": f"Bearer {refresh.access_token}",
+        }
         self.producto_a = Productos.objects.create(
             name="Producto A", precio=10.0, descripcion="desc a", stock=50
         )
@@ -18,13 +29,22 @@ class ReduceStockTests(TestCase):
             name="Producto B", precio=5.0, descripcion="desc b", stock=10
         )
 
+    def test_sin_token_retorna_401(self):
+        response = self.client.post(
+            REDUCE_STOCK_URL,
+            [{"id": self.producto_a.id, "cantidad": 5}],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
     # --- casos exitosos ---
 
     def test_reduce_stock_un_producto(self):
         response = self.client.post(
             REDUCE_STOCK_URL,
             [{"id": self.producto_a.id, "cantidad": 5}],
-            format="json"
+            format="json",
+            **self.auth_headers,
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.producto_a.refresh_from_db()
@@ -37,7 +57,8 @@ class ReduceStockTests(TestCase):
                 {"id": self.producto_a.id, "cantidad": 10},
                 {"id": self.producto_b.id, "cantidad": 3},
             ],
-            format="json"
+            format="json",
+            **self.auth_headers,
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.producto_a.refresh_from_db()
@@ -50,7 +71,8 @@ class ReduceStockTests(TestCase):
         response = self.client.post(
             REDUCE_STOCK_URL,
             [{"id": self.producto_b.id, "cantidad": 10}],
-            format="json"
+            format="json",
+            **self.auth_headers,
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.producto_b.refresh_from_db()
@@ -59,14 +81,20 @@ class ReduceStockTests(TestCase):
     # --- validaciones de entrada ---
 
     def test_lista_vacia_retorna_400(self):
-        response = self.client.post(REDUCE_STOCK_URL, [], format="json")
+        response = self.client.post(
+            REDUCE_STOCK_URL,
+            [],
+            format="json",
+            **self.auth_headers,
+        )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_body_no_es_lista_retorna_400(self):
         response = self.client.post(
             REDUCE_STOCK_URL,
             {"id": self.producto_a.id, "cantidad": 1},
-            format="json"
+            format="json",
+            **self.auth_headers,
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -74,7 +102,8 @@ class ReduceStockTests(TestCase):
         response = self.client.post(
             REDUCE_STOCK_URL,
             [{"cantidad": 5}],
-            format="json"
+            format="json",
+            **self.auth_headers,
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -82,7 +111,8 @@ class ReduceStockTests(TestCase):
         response = self.client.post(
             REDUCE_STOCK_URL,
             [{"id": self.producto_a.id}],
-            format="json"
+            format="json",
+            **self.auth_headers,
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -92,7 +122,8 @@ class ReduceStockTests(TestCase):
         response = self.client.post(
             REDUCE_STOCK_URL,
             [{"id": 9999, "cantidad": 1}],
-            format="json"
+            format="json",
+            **self.auth_headers,
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -100,7 +131,8 @@ class ReduceStockTests(TestCase):
         response = self.client.post(
             REDUCE_STOCK_URL,
             [{"id": self.producto_b.id, "cantidad": 99}],
-            format="json"
+            format="json",
+            **self.auth_headers,
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -112,7 +144,8 @@ class ReduceStockTests(TestCase):
                 {"id": self.producto_a.id, "cantidad": 1},
                 {"id": 9999, "cantidad": 1},  # este falla
             ],
-            format="json"
+            format="json",
+            **self.auth_headers,
         )
         self.assertNotEqual(response.status_code, status.HTTP_200_OK)
         self.producto_a.refresh_from_db()

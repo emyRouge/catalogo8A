@@ -1,4 +1,6 @@
 from rest_framework import viewsets, status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.authentication import JWTStatelessUserAuthentication
 from .models import Productos
 from .serializers import ProductoSerializer
 from rest_framework.response import Response
@@ -8,6 +10,8 @@ from rest_framework.decorators import action
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = Productos.objects.all()
     serializer_class = ProductoSerializer
+    authentication_classes = [JWTStatelessUserAuthentication]
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['POST'], url_path='reduce-stock')
     def reduce_stock(self, request):
